@@ -654,7 +654,8 @@ static void
 init_rlwrap(char *command_line)
 {
 
-  char *homedir, *histdir, *homedir_prefix, *hostname;
+  char *home, *rlwrap_home, *xdg_data_home;
+  char *histdir, *homedir_prefix, *hostname;
   struct stat statbuf;
   time_t now;
   
@@ -670,26 +671,43 @@ init_rlwrap(char *command_line)
   
   
   /* Determine rlwrap home dir and prefix for default history and completion filenames */
-  homedir = (getenv("RLWRAP_HOME") ? getenv("RLWRAP_HOME") : getenv("HOME"));
-  if (!homedir) {
-    homedir = ".";
-    myerror(WARNING | NOERRNO, "No HOME, using '%s'", homedir);
+  home = getenv("HOME");
+  rlwrap_home = getenv("RLWRAP_HOME");
+  xdg_data_home = getenv("XDG_DATA_HOME");
+
+  if (!xdg_data_home || xdg_data_home[0] == 0) {
+    if (home) {
+      xdg_data_home = add2strings(home, "/.local/share");
+    } else {
+      xdg_data_home = NULL;
+    }
+  } else if (xdg_data_home[0] != '/') {
+    xdg_data_home = NULL;
   }
-  homedir_prefix = (getenv("RLWRAP_HOME") ?                    /* is RLWRAP_HOME set?                */
-                    add2strings(getenv("RLWRAP_HOME"), "/") :  /* use $RLWRAP_HOME/<command>_history */
-                    add2strings(homedir, "/."));        /* if not, use ~/.<command>_history   */
 
-  /* Determine history file name and check its existence and permissions */
-
+  if (rlwrap_home) {
+    /* use $RLWRAP_HOME/<command>_history */
+    homedir_prefix = add2strings(rlwrap_home, "/");
+  } else if (xdg_data_home) {
+    /* use $XDG_DATA_HOME/<command>_history */
+    homedir_prefix = add2strings(xdg_data_home, "/");
+  } else if (home) {
+    /* use $HOME/<command>_history */
+    homedir_prefix = add2strings(home, "/");
+  } else {
+    /* use ./.<command>_history */
+    myerror(WARNING | NOERRNO, "No HOME, using '.'", homedir);
+    homedir_prefix = "./.";
+  }
   if (history_filename) {
+    /* use -H <file> or --history-filename=<file> */
     histdir = mydirname(history_filename);
   } else {
-    histdir = homedir;
+    histdir = homedir_prefix;
     history_filename = add3strings(homedir_prefix, command_name, "_history");
   }
 
-
-  
+  /* Determine history file name and check its existence and permissions */
   if (write_histfile) {
     if (access(history_filename, F_OK) == 0) { /* already exists, can we read/write it? */
       if (access(history_filename, R_OK | W_OK) != 0) {
